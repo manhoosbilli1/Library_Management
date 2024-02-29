@@ -1,13 +1,14 @@
 import {Text, TouchableOpacity, StyleSheet} from 'react-native';
 import React from 'react';
 
-export default function Btns({text, onclick}) {
+export default function Btns({ text, onclick }: { text: string, onclick: () => void }) {
   return (
     <TouchableOpacity style={styles.roundButton2} onPress={onclick}>
       <Text style={styles.text}>{text}</Text>
     </TouchableOpacity>
   );
 }
+
 
 const styles = StyleSheet.create({
   screen: {
