@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from 'react';
+import React, {useState} from 'react';
+import {PermissionsAndroid} from 'react-native';
 import {
   SafeAreaView,
   View,
@@ -10,6 +11,7 @@ import {
 import Btns from '../Btns';
 import * as config from '../../android/app/google-services.json';
 import firestore from '@react-native-firebase/firestore';
+import database from '@react-native-firebase/database';
 import firebase from '@react-native-firebase/app';
 
 const firebaseConfig = {
@@ -23,16 +25,15 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+const reference = database().ref('/');
 
-/**
- * Gets a book document from Firestore and logs the name if found,
- * otherwise logs that no book was found.
- */
+
 const getBooks = async () => {
   try {
     const book = await firestore().collection('books').doc('1').get();
     if (book.data()?.book_name) {
       Alert.alert(book.data()!.book_name);
+      console.log(book.data()!.book_name);
     } else {
       console.log('no book');
     }
@@ -54,13 +55,17 @@ const askQuestion = () => {
 
 /**
  * Entry screen component.
- * 
- * Renders a screen with a text input to search books, 
+ *
+ * Renders a screen with a text input to search books,
  * and buttons to navigate to ask a question or search books.
- * 
+ *
  * Manages local state for the search input text and result.
  */
-const Entry = ({ navigation }) => {
+const Entry = ({navigation}) => {
+  reference.set({
+    key1: 'value1',
+    key2: 'value2',
+  });
   const [searchResult, setSearchResult] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
 
@@ -97,13 +102,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 'auto',
-    width: '100%',
+    width: 'auto',
   },
   buttonContainer: {
     alignContent: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    height: '50%',
+    height: 'auto',
     width: '100%',
   },
   input: {
@@ -112,6 +117,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'black',
     margin: 10,
+    color: 'black',
   },
   text: {
     color: 'darkred',
