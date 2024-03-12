@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, { useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -10,8 +10,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Keyboard,
+  TouchableOpacity,
 } from 'react-native';
-import Btns from '../Btns';
+import CheckBox from '@react-native-community/checkbox';
 import * as config from '../../android/app/google-services.json';
 import firestore from '@react-native-firebase/firestore';
 import database from '@react-native-firebase/database';
@@ -55,53 +56,29 @@ const getBooks = async (documentId: string | undefined) => {
   }
 };
 
-const searchBookByCode = async (bookCode: string | undefined) => {
-  try {
-    if (!bookCode) {
-      console.log('Book code is undefined');
-      return;
-    }
-
-    const querySnapshot = await firestore().collection('books').doc(bookCode);
-
-    if (!querySnapshot.empty) {
-      const bookData = querySnapshot.data().get().Book_name;
-      Alert.alert(
-        'Book Details',
-        `Name: ${bookData.Book_name}\nDescription: ${bookData.Book_description}`,
-      );
-    } else {
-      console.log('Book not found');
-      Alert.alert('Book not found');
-    }
-  } catch (error) {
-    console.log('Firestore Query Error:', error);
-  }
-};
-
-const searchBookByName = async bookName => {
+const searchBookByName = async (bookName: string) => {
   try {
     if (!bookName) {
       console.log('Book name is undefined');
       return;
     }
 
-    const querySnapshot = await firestore().collection('books').get();
+    const querySnapshot = await firestore()
+      .collection('books')
+      .where('Book_name', '==', bookName)
+      .get();
 
     if (!querySnapshot.empty) {
-      const matchingBooks = [];
-
-      querySnapshot.forEach(doc => {
-        const bookData = doc.data();
-        if (bookData.Book_name === bookName) {
-          matchingBooks.push(bookData);
-        }
-      });
+      const matchingBooks = querySnapshot.docs.map(doc => doc.data());
 
       if (matchingBooks.length > 0) {
         // Display book details in a popup
         matchingBooks.forEach(bookData => {
-          Alert.alert('Book Details', `Name: ${bookData.Book_name}\n`);
+          Alert.alert(
+            'Book Details',
+            `Name: ${bookData.Book_name}\n\n\n\nBook Description: ${bookData.Book_description}\n`,
+          );
+          console.log('Book Details', `Name: ${bookData.Book_description}\n`);
         });
       } else {
         console.log('Book not found');
@@ -115,14 +92,168 @@ const searchBookByName = async bookName => {
     console.log('Firestore Query Error:', error);
   }
 };
+const searchBookByCode = async (bookCode: string) => {
+  try {
+    console.log('Searching for book with code:', bookCode); // Log bookCode for debugging
+
+    if (!bookCode) {
+      console.log('Book code is undefined or not a number');
+      return;
+    }
+
+    const querySnapshot = await firestore().collection('books').get();
+
+    const matchingBooks = querySnapshot.docs
+      .map(doc => doc.data())
+      .filter(bookData => bookData.Book_QR_code === parseInt(bookCode, 10));
+
+    if (matchingBooks.length > 0) {
+      // Display book details in a popup
+      matchingBooks.forEach(bookData => {
+        Alert.alert(
+          'Book Details',
+          `Name: ${bookData.Book_name}\n\n\n\nBook Description: ${bookData.Book_description}\n`,
+        );
+        console.log('Book Details', `Name: ${bookData.Book_description}\n`);
+      });
+    } else {
+      console.log('Book not found');
+      Alert.alert('Book not found');
+    }
+  } catch (error) {
+    console.log('Firestore Query Error:', error);
+    Alert.alert('Error occurred while searching for book by code');
+  }
+};
 
 const Entry = () => {
   const [searchInput, setSearchInput] = useState('');
   const [bookName, setBookName] = useState('');
   const [bookCode, setBookCode] = useState('');
-  function askQuestion(): void {
-    throw new Error('Function not implemented.');
-  }
+  const [isBookNameChecked, setIsBookNameChecked] = useState(false);
+  const [isBookCodeChecked, setIsBookCodeChecked] = useState(false);
+  const [userQuestion, setUserQuestion] = useState('');
+  const [userAnswer, setUserAnswer] = useState('');
+  const [question, setQuestion] = useState('');
+  const [answer, setAnswer] = useState('');
+
+  const predefinedQuestions = [
+    {
+      question: 'Book borrowing rules',
+      answer: `Borrowing Availability:
+        Borrowing is available during all working days using the national ID card and university ID card.
+        Borrower's Responsibility:
+        The borrower is fully responsible for the safety of the borrowed books and must keep them in perfect condition until they are returned to the library.
+        Book Renewal:
+        • Renewal of any book is not allowed if it is requested by one or more individuals. Priority is given to the borrower who requested the book first.
+        • New books are not loaned to borrowers if they have overdue books.
+        • Books can be renewed after being returned if there are no requests for them by contacting the library through the phone number 1234567890 or by visiting the library in person.
+        Borrowing Period:
+        The borrowing period for books is two weeks from the date of borrowing.
+        Maximum Number of books:
+        Borrowers are allowed to borrow a maximum of five books at a time.
+        Late Return Fines:
+        In case the borrowing period expires without returning the materials or renewing, a fine of 2 Riyals per material will be applied for each day of delay.
+        Damaged or Lost Materials:
+        • If the material is damaged or the delay exceeds 60 days, the material will be considered lost.
+        • The borrower will be required to pay the value of the material, the fine for the delay, and a 30 Riyal technical operations fee.`,
+    },
+    {
+      question: 'Working hours',
+      answer: `Sunday to Thursday:
+        • Opening Time: 8:00 AM
+        • Closing Time: 9:00 PM
+        Friday:
+        • Closed
+        Saturday:
+        • Opening Time: 4:00 PM
+        • Closing Time: 9:00 PM`,
+    },
+    {
+      question: 'Internet password',
+      answer: 'The Internet password is 123RMS',
+    },
+  ];
+
+  const handleSearch = () => {
+    if (isBookNameChecked) {
+      searchBookByName(bookName);
+    } else if (isBookCodeChecked) {
+      searchBookByCode(bookCode);
+    } else {
+      Alert.alert('Please select a search criteria');
+    }
+  };
+
+  const handleAskQuestion = (question: string) => {
+    const selectedQuestion = predefinedQuestions.find(
+      q => q.question === question,
+    );
+    if (selectedQuestion) {
+      Alert.alert(selectedQuestion.question, selectedQuestion.answer);
+    } else {
+      Alert.alert('Question not found');
+    }
+  };
+
+  const handleQuestion = () => {
+    // Convert the input question to lowercase for case-insensitive matching
+    const lowerCaseQuestion = question.toLowerCase();
+
+    // Predefined keywords and their corresponding answers
+    const keywordAnswers = {
+      rule: `Borrowing Availability:
+        Borrowing is available during all working days using the national ID card and university ID card.
+        Borrower's Responsibility:
+        The borrower is fully responsible for the safety of the borrowed books and must keep them in perfect condition until they are returned to the library.
+        Book Renewal:
+        • Renewal of any book is not allowed if it is requested by one or more individuals. Priority is given to the borrower who requested the book first.
+        • New books are not loaned to borrowers if they have overdue books.
+        • Books can be renewed after being returned if there are no requests for them by contacting the library through the phone number 1234567890 or by visiting the library in person.
+        Borrowing Period:
+        The borrowing period for books is two weeks from the date of borrowing.
+        Maximum Number of books:
+        Borrowers are allowed to borrow a maximum of five books at a time.
+        Late Return Fines:
+        In case the borrowing period expires without returning the materials or renewing, a fine of 2 Riyals per material will be applied for each day of delay.
+        Damaged or Lost Materials:
+        • If the material is damaged or the delay exceeds 60 days, the material will be considered lost.
+        • The borrower will be required to pay the value of the material, the fine for the delay, and a 30 Riyal technical operations fee.`,
+      timing: `Sunday to Thursday:
+        • Opening Time: 8:00 AM
+        • Closing Time: 9:00 PM
+        Friday:
+        • Closed
+        Saturday:
+        • Opening Time: 4:00 PM
+        • Closing Time: 9:00 PM`,
+      time: `Sunday to Thursday:
+        • Opening Time: 8:00 AM
+        • Closing Time: 9:00 PM
+        Friday:
+        • Closed
+        Saturday:
+        • Opening Time: 4:00 PM
+        • Closing Time: 9:00 PM`,
+      'internet password': 'The Internet password is 123RMS',
+    };
+
+    // Check if the question contains predefined keywords
+    const matchingKeywords = Object.keys(keywordAnswers).filter(keyword =>
+      lowerCaseQuestion.includes(keyword),
+    );
+    console.log('Matching Keywords:', matchingKeywords); // Debugging statement
+
+    // If matching keywords are found, set the corresponding answer
+    if (matchingKeywords.length > 0) {
+      const matchingKeyword = matchingKeywords[0]; // Assume only one matching keyword for simplicity
+      const fullAnswer = keywordAnswers[matchingKeyword];
+      setAnswer(fullAnswer);
+      Alert.alert(matchingKeyword, fullAnswer);
+    } else {
+      setAnswer("Sorry, I couldn't find an answer to your question.");
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -131,32 +262,68 @@ const Entry = () => {
           style={styles.innerContainer}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.buttonContainer}>
-            <Btns text={'Ask a question'} onclick={askQuestion} />
-            <TextInput
-              style={styles.input}
-              placeholder="What is the most read book?..."
-              onChangeText={text => setSearchInput(text)}
-            />
-            <Text style={styles.text}>{searchInput}</Text>
-          </View>
-          <View style={styles.buttonContainer}>
-            <Btns
-              text={'Search book'}
-              onclick={() => searchBookByName(bookName)}
-            />
-
+            <TouchableOpacity
+              style={styles.roundButton2}
+              onPress={() => handleSearch()}>
+              <Text style={styles.text}>Search book</Text>
+            </TouchableOpacity>
             <View style={styles.inputContainer}>
-              <TextInput
-                placeholder="Enter book name"
-                style={styles.input}
-                onChangeText={text => setBookName(text)}
-              />
-              <TextInput
-                placeholder="Enter book code"
-                style={styles.input}
-                onChangeText={text => setBookCode(text)}
-              />
+              <View style={styles.checkboxContainer}>
+                <CheckBox
+                  value={isBookNameChecked}
+                  onValueChange={newValue => {
+                    setIsBookNameChecked(newValue);
+                    setIsBookCodeChecked(false);
+                  }}
+                />
+                <Text style={styles.checkboxLabel}>Search by Book Name</Text>
+              </View>
+              <View style={styles.checkboxContainer}>
+                <CheckBox
+                  value={isBookCodeChecked}
+                  onValueChange={newValue => {
+                    setIsBookCodeChecked(newValue);
+                    setIsBookNameChecked(false);
+                  }}
+                />
+                <Text style={styles.checkboxLabel}>Search by Book Code</Text>
+              </View>
             </View>
+            <TextInput
+              placeholder="Enter book name"
+              style={styles.input}
+              onChangeText={text => setBookName(text)}
+              editable={!isBookCodeChecked}
+            />
+            <TextInput
+              placeholder="Enter book code"
+              style={styles.input}
+              onChangeText={text => setBookCode(text)}
+              editable={!isBookNameChecked}
+            />
+            <View style={styles.userQuestionContainer}>
+              <TextInput
+                placeholder="Enter your question"
+                style={styles.input}
+                onChangeText={text => setQuestion(text)}
+              />
+              <TouchableOpacity
+                style={styles.roundButton}
+                onPress={() => handleQuestion()}>
+                <Text style={styles.text}>Ask Question</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          <View style={styles.questionContainer}>
+            <Text style={styles.questionLabel}>Predefined Questions:</Text>
+            {predefinedQuestions.map(question => (
+              <TouchableOpacity
+                key={question.question}
+                style={styles.questionButton}
+                onPress={() => handleAskQuestion(question.question)}>
+                <Text>{question.question}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -185,10 +352,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
+    marginBottom: 10,
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkboxLabel: {
+    marginLeft: 8,
   },
   input: {
     height: 40,
-    width: '48%',
+    width: '100%',
     borderWidth: 2,
     borderColor: 'black',
     marginVertical: 10,
@@ -198,6 +373,46 @@ const styles = StyleSheet.create({
     color: 'darkred',
     fontWeight: 'bold',
     marginTop: 10,
+  },
+  roundButton2: {
+    marginTop: 20,
+    width: 150,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'lightgray',
+  },
+  roundButton: {
+    marginTop: 10,
+    width: 150,
+    height: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: 'lightgray',
+  },
+  questionContainer: {
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
+  },
+  questionLabel: {
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  questionButton: {
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 5,
+    marginBottom: 5,
+  },
+  userQuestionContainer: {
+    marginTop: 20,
+    width: '100%',
+    alignItems: 'center',
   },
 });
 

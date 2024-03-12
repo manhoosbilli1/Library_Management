@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@react-native-community/checkbox": "^0.5.17",
     "@react-native-firebase/app": "^19.0.1",
     "@react-native-firebase/database": "^19.0.1",
     "@react-native-firebase/firestore": "^19.0.1",
