@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, {useState} from 'react';
 import {
   SafeAreaView,
   View,
@@ -17,6 +17,7 @@ import * as config from '../../android/app/google-services.json';
 import firestore from '@react-native-firebase/firestore';
 import database from '@react-native-firebase/database';
 import firebase from '@react-native-firebase/app';
+import TTS from 'react-native-tts';
 
 const firebaseConfig = {
   apiKey: config.client[0].api_key[0].current_key,
@@ -136,6 +137,7 @@ const Entry = () => {
   const [userAnswer, setUserAnswer] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
+  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
 
   const predefinedQuestions = [
     {
@@ -171,7 +173,7 @@ const Entry = () => {
     },
     {
       question: 'Internet password',
-      answer: 'The Internet password is 123RMS',
+      answer: 'Password is 123RMS',
     },
   ];
 
@@ -201,6 +203,13 @@ const Entry = () => {
     const lowerCaseQuestion = question.toLowerCase();
 
     // Predefined keywords and their corresponding answers
+    const keywordAnswerShort = {
+      rule: 'Books can be borrowed for two weeks with a maximum of five books per borrower.',
+      timing: 'The library is open from 8:00 AM to 9:00 PM.',
+      time: 'The library is open from 8:00 AM to 9:00 PM.',
+      password: 'The Internet password is 123RMS',
+      pass: 'The Internet password is 123RMS',
+    };
     const keywordAnswers = {
       rule: `Borrowing Availability:
         Borrowing is available during all working days using the national ID card and university ID card.
@@ -235,7 +244,7 @@ const Entry = () => {
         Saturday:
         • Opening Time: 4:00 PM
         • Closing Time: 9:00 PM`,
-      'internet password': 'The Internet password is 123RMS',
+      password: 'The Internet password is 123RMS',
     };
 
     // Check if the question contains predefined keywords
@@ -248,7 +257,9 @@ const Entry = () => {
     if (matchingKeywords.length > 0) {
       const matchingKeyword = matchingKeywords[0]; // Assume only one matching keyword for simplicity
       const fullAnswer = keywordAnswers[matchingKeyword];
+      const shortAnswer = keywordAnswerShort[matchingKeyword];
       setAnswer(fullAnswer);
+      TTS.speak(shortAnswer || fullAnswer);
       Alert.alert(matchingKeyword, fullAnswer);
     } else {
       setAnswer("Sorry, I couldn't find an answer to your question.");
@@ -276,7 +287,7 @@ const Entry = () => {
                     setIsBookCodeChecked(false);
                   }}
                 />
-                <Text style={styles.checkboxLabel}>Search by Book Name</Text>
+                <Text style={styles.checkboxLabel}>Search by Name</Text>
               </View>
               <View style={styles.checkboxContainer}>
                 <CheckBox
@@ -336,6 +347,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    width: '100%',
   },
   innerContainer: {
     flex: 1,
