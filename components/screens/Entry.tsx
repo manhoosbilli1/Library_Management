@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {
   SafeAreaView,
   View,
@@ -30,10 +30,8 @@ const firebaseConfig = {
 };
 
 if (!firebase.apps.length) {
-  // If not, initialize Firebase
   firebase.initializeApp(firebaseConfig);
 }
-const reference = database().ref('/');
 
 const getBooks = async (documentId: string | undefined) => {
   try {
@@ -110,6 +108,9 @@ const searchBookByCode = async (bookCode: string) => {
 
     if (matchingBooks.length > 0) {
       // Display book details in a popup
+
+      const ref = database().ref('/lastSearchedBookCode');
+      ref.set(matchingBooks[0].Book_QR_code);
       matchingBooks.forEach(bookData => {
         Alert.alert(
           'Book Details',
@@ -138,6 +139,16 @@ const Entry = () => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+
+  useEffect(() => {
+    firebase
+      .database()
+      .ref('/')
+      .on('value', snapshot => {
+        const data = snapshot.val();
+        console.log('Data:', data);
+      });
+  }, []);
 
   const predefinedQuestions = [
     {
@@ -193,6 +204,7 @@ const Entry = () => {
     );
     if (selectedQuestion) {
       Alert.alert(selectedQuestion.question, selectedQuestion.answer);
+      TTS.speak(selectedQuestion.answer);
     } else {
       Alert.alert('Question not found');
     }
