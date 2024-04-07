@@ -11,6 +11,7 @@ import {
   Platform,
   Keyboard,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox';
 import * as config from '../../android/app/google-services.json';
@@ -45,25 +46,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const firestore = getFirestore(app);
 const database = getDatabase(app);
-
-const startListeningForArduinoSuccess = () => {
-  const statusRef = ref(database, '/test/fromArduino/status');
-  onValue(
-    statusRef,
-    async snapshot => {
-      const status = snapshot.val();
-      console.log(`Arduino status: ${status}`);
-      if (status === 'success') {
-        console.log('Arduino status is success');
-        // Stop listening to the status after success
-        off(statusRef);
-      }
-    },
-    {
-      onlyOnce: true, // Listen for one-time rather than continuously
-    },
-  );
-};
 
 const getBooks = async (documentId: string) => {
   try {
@@ -185,17 +167,50 @@ const searchBookByCode = async (bookCode: string) => {
 };
 
 const Entry = () => {
-  const [searchInput, setSearchInput] = useState('');
   const [bookName, setBookName] = useState('');
   const [bookCode, setBookCode] = useState('');
   const [isBookNameChecked, setIsBookNameChecked] = useState(false);
   const [isBookCodeChecked, setIsBookCodeChecked] = useState(false);
-  const [userQuestion, setUserQuestion] = useState('');
-  const [userAnswer, setUserAnswer] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
+  const [isSearching, setIsSearching] = useState(false); // New state to manage search status
 
+  const startListeningForArduinoSuccess = () => {
+    setIsSearching(true); // Indicate search start
+    const statusRef = ref(database, '/test/fromArduino/status');
+
+    // Listen for changes in the 'status' node
+    const statusListener = onValue(statusRef, async snapshot => {
+      const status = snapshot.val();
+      console.log(`Arduino status: ${status}`);
+
+      if (status === 'success') {
+        setIsSearching(false); // Indicate search end
+        Alert.alert('Found!', 'Book is now Found');
+
+        // Fetch additional book details from '/test/fromArduino/contents'
+        const contentsRef = ref(database, '/test/fromArduino/content');
+        await get(contentsRef)
+          .then(contentsSnapshot => {
+            if (contentsSnapshot.exists()) {
+              const contents = contentsSnapshot.val();
+              const bookDetailsMessage = `Book Found! \n\nBook Name: ${contents.name}\nBook Code: ${contents.code}\nBook Section: ${contents.section}\nBook Column: ${contents.column}\nBook Expected Section: ${contents.expectedSection}\n`;
+              Alert.alert('Success', bookDetailsMessage);
+            }
+          })
+          .catch(error => {
+            console.error('Error fetching book details: ', error);
+          });
+
+        // Optionally, reset the status in Firebase to allow new searches
+        set(statusRef, 'idle'); // Reset the status
+      }
+    });
+
+    // Return a function to unsubscribe from the listener when no longer needed
+    return () => off(statusRef, 'value', statusListener);
+  };
   const predefinedQuestions = [
     {
       question: 'Book borrowing rules',
@@ -235,12 +250,20 @@ const Entry = () => {
   ];
 
   const handleSearch = () => {
-    if (isBookNameChecked) {
-      startListeningForArduinoSuccess(); // Start listening only when search is triggered
-      searchBookByName(bookName);
-    } else if (isBookCodeChecked) {
-      startListeningForArduinoSuccess(); // Same as above
-      searchBookByCode(bookCode);
+    if ((isBookNameChecked || isBookCodeChecked) && !isSearching) {
+      // Activate the listener only when the search is triggered
+      startListeningForArduinoSuccess();
+
+      if (isBookNameChecked) {
+        searchBookByName(bookName);
+      } else if (isBookCodeChecked) {
+        searchBookByCode(bookCode);
+      }
+    } else if (isSearching) {
+      Alert.alert(
+        'Search in progress',
+        'Please wait until the current search is complete.',
+      );
     } else {
       Alert.alert('Please select a search criteria');
     }
@@ -263,14 +286,14 @@ const Entry = () => {
     const lowerCaseQuestion = question.toLowerCase();
 
     // Predefined keywords and their corresponding answers
-    const keywordAnswerShort = {
+    const keywordAnswerShort: {[key: string]: string} = {
       rule: 'Books can be borrowed for two weeks with a maximum of five books per borrower.',
       timing: 'The library is open from 8:00 AM to 9:00 PM.',
       time: 'The library is open from 8:00 AM to 9:00 PM.',
       password: 'The Internet password is 123RMS',
       pass: 'The Internet password is 123RMS',
     };
-    const keywordAnswers = {
+    const keywordAnswers: {[key: string]: string} = {
       rule: `Borrowing Availability:
         Borrowing is available during all working days using the national ID card and university ID card.
         Borrower's Responsibility:
@@ -335,8 +358,13 @@ const Entry = () => {
           <View style={styles.buttonContainer}>
             <TouchableOpacity
               style={styles.roundButton2}
-              onPress={() => handleSearch()}>
-              <Text style={styles.text}>Search book</Text>
+              onPress={() => handleSearch()}
+              disabled={isSearching}>
+              {isSearching ? (
+                <ActivityIndicator size="small" color="#0000ff" />
+              ) : (
+                <Text style={styles.text}>Search book</Text>
+              )}
             </TouchableOpacity>
             <View style={styles.inputContainer}>
               <View style={styles.checkboxContainer}>
