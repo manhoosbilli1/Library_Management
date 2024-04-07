@@ -14,44 +14,75 @@ import {
 } from 'react-native';
 import CheckBox from '@react-native-community/checkbox';
 import * as config from '../../android/app/google-services.json';
-import firestore from '@react-native-firebase/firestore';
-import database from '@react-native-firebase/database';
-import firebase from '@react-native-firebase/app';
 import TTS from 'react-native-tts';
 
+import {initializeApp} from 'firebase/app';
+import {get, getDatabase, off, onValue} from 'firebase/database';
+
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  query,
+  where,
+} from 'firebase/firestore';
+import {ref, set} from 'firebase/database';
+
 const firebaseConfig = {
-  apiKey: config.client[0].api_key[0].current_key,
-  authDomain: config.project_info.project_id + '.firebaseapp.com',
-  databaseURL: 'https://' + config.project_info.project_id + '.firebaseio.com',
-  projectId: config.project_info.project_id,
-  storageBucket: config.project_info.storage_bucket,
-  messagingSenderId: config.client[0].client_info.mobilesdk_app_id,
-  appId: config.client[0].client_info.mobilesdk_app_id,
+  apiKey: 'AIzaSyBbpJof1GGL_3YUWB74Z3lpq-cy4QCasAw',
+  authDomain: 'library-management-c5d17.firebaseapp.com',
+  databaseURL: 'https://library-management-c5d17-default-rtdb.firebaseio.com',
+  projectId: 'library-management-c5d17',
+  storageBucket: 'library-management-c5d17.appspot.com',
+  messagingSenderId: '779945767679',
+  appId: '1:779945767679:web:7f717af098a3a41e5652ca',
 };
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
+const app = initializeApp(firebaseConfig);
+const firestore = getFirestore(app);
+const database = getDatabase(app);
 
-const getBooks = async (documentId: string | undefined) => {
+const startListeningForArduinoSuccess = () => {
+  const statusRef = ref(database, '/test/fromArduino/status');
+  onValue(
+    statusRef,
+    async snapshot => {
+      const status = snapshot.val();
+      console.log(`Arduino status: ${status}`);
+      if (status === 'success') {
+        console.log('Arduino status is success');
+        // Stop listening to the status after success
+        off(statusRef);
+      }
+    },
+    {
+      onlyOnce: true, // Listen for one-time rather than continuously
+    },
+  );
+};
+
+const getBooks = async (documentId: string) => {
   try {
     if (!documentId) {
       console.log('Document ID is undefined');
       return;
     }
 
-    const bookRef = firestore().collection('books').doc(documentId);
-    const bookSnapshot = await bookRef.get();
+    const bookRef = doc(firestore, 'books', documentId);
+    const bookSnapshot = await getDoc(bookRef);
 
-    if (bookSnapshot.exists) {
+    if (bookSnapshot.exists()) {
       const bookData = bookSnapshot.data();
-      Alert.alert(bookData?.Book_name);
       console.log(bookData?.Book_name);
     } else {
       console.log('No book found');
     }
   } catch (error) {
-    console.log(error);
+    console.error('Error fetching book: ', error);
   }
 };
 
@@ -62,68 +93,93 @@ const searchBookByName = async (bookName: string) => {
       return;
     }
 
-    const querySnapshot = await firestore()
-      .collection('books')
-      .where('Book_name', '==', bookName)
-      .get();
+    // Define the reference to the 'books' collection and create a query
+    const booksRef = collection(firestore, 'books');
+    const q = query(booksRef, where('Book_name', '==', bookName));
+
+    // Execute the query
+    const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      const matchingBooks = querySnapshot.docs.map(doc => doc.data());
+      const matchingBooks = querySnapshot.docs.map(doc => {
+        const bookData = doc.data();
+        return {
+          ...bookData,
+          id: doc.id, // Include document ID in the result
+        };
+      });
 
-      if (matchingBooks.length > 0) {
-        // Display book details in a popup
-        matchingBooks.forEach(bookData => {
-          Alert.alert(
-            'Book Details',
-            `Name: ${bookData.Book_name}\n\n\n\nBook Description: ${bookData.Book_description}\n`,
-          );
-          console.log('Book Details', `Name: ${bookData.Book_description}\n`);
-        });
-      } else {
-        console.log('Book not found');
-        Alert.alert('Book not found');
-      }
-    } else {
-      console.log('No books in the collection');
-      Alert.alert('No books in the collection');
-    }
-  } catch (error) {
-    console.log('Firestore Query Error:', error);
-  }
-};
-const searchBookByCode = async (bookCode: string) => {
-  try {
-    console.log('Searching for book with code:', bookCode); // Log bookCode for debugging
-
-    if (!bookCode) {
-      console.log('Book code is undefined or not a number');
-      return;
-    }
-
-    const querySnapshot = await firestore().collection('books').get();
-
-    const matchingBooks = querySnapshot.docs
-      .map(doc => doc.data())
-      .filter(bookData => bookData.Book_QR_code === parseInt(bookCode, 10));
-
-    if (matchingBooks.length > 0) {
       // Display book details in a popup
-
-      const ref = database().ref('/lastSearchedBookCode');
-      ref.set(matchingBooks[0].Book_QR_code);
-      matchingBooks.forEach(bookData => {
+      matchingBooks.forEach(async bookData => {
         Alert.alert(
           'Book Details',
-          `Name: ${bookData.Book_name}\n\n\n\nBook Description: ${bookData.Book_description}\n`,
+          `Name: ${bookData.Book_name}\n\nBook Description: ${bookData.Book_description}\n`,
         );
-        console.log('Book Details', `Name: ${bookData.Book_description}\n`);
+        console.log('Book Code is', bookData.Book_QR_code);
+        await set(ref(database, '/test/code'), bookData.Book_QR_code);
+        console.log(
+          'Book Details',
+          `Name: ${bookData.Book_name}, Description: ${bookData.Book_description}`,
+        );
       });
     } else {
       console.log('Book not found');
       Alert.alert('Book not found');
     }
   } catch (error) {
-    console.log('Firestore Query Error:', error);
+    console.error('Firestore Query Error:', error);
+    Alert.alert(
+      'Error',
+      'An error occurred while searching for the book by name.',
+    );
+  }
+};
+
+const searchBookByCode = async (bookCode: string) => {
+  try {
+    console.log('Searching for book with code:', bookCode);
+
+    if (!bookCode) {
+      console.log('Book code is undefined');
+      return;
+    }
+
+    // Firestore query to find the book by QR code
+    const booksRef = collection(firestore, 'books');
+    const q = query(
+      booksRef,
+      where('Book_QR_code', '==', parseInt(bookCode, 10)),
+    );
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      // Assuming only one book matches the QR code for simplicity
+      const bookData = querySnapshot.docs[0].data();
+
+      // Realtime Database update with the found book's QR code
+      try {
+        const lastSearchedBookCodeRef = ref(database, '/test/code');
+        await set(lastSearchedBookCodeRef, bookData.Book_QR_code);
+        console.log('Updated last searched book code in Realtime Database');
+      } catch (error) {
+        console.error('Error updating Realtime Database:', error);
+      }
+
+      // Log and alert book details
+      console.log(
+        'Book Details',
+        `Name: ${bookData.Book_name}, Description: ${bookData.Book_description}`,
+      );
+      Alert.alert(
+        'Book Details',
+        `Name: ${bookData.Book_name}\nDescription: ${bookData.Book_description}`,
+      );
+    } else {
+      console.log('Book not found');
+      Alert.alert('Book not found');
+    }
+  } catch (error) {
+    console.error('Error searching book by code:', error);
     Alert.alert('Error occurred while searching for book by code');
   }
 };
@@ -139,16 +195,6 @@ const Entry = () => {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
-
-  useEffect(() => {
-    firebase
-      .database()
-      .ref('/')
-      .on('value', snapshot => {
-        const data = snapshot.val();
-        console.log('Data:', data);
-      });
-  }, []);
 
   const predefinedQuestions = [
     {
@@ -190,8 +236,10 @@ const Entry = () => {
 
   const handleSearch = () => {
     if (isBookNameChecked) {
+      startListeningForArduinoSuccess(); // Start listening only when search is triggered
       searchBookByName(bookName);
     } else if (isBookCodeChecked) {
+      startListeningForArduinoSuccess(); // Same as above
       searchBookByCode(bookCode);
     } else {
       Alert.alert('Please select a search criteria');

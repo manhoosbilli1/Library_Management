@@ -15,6 +15,9 @@ const firebaseConfig = {
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const firestore = getFirestore(app);
-const database = getDatabase(app);
+const database = getDatabase(
+  app,
+  'https://library-management-c5d17.firebaseio.com/',
+);
 
 export {app, firestore, database, collection};
