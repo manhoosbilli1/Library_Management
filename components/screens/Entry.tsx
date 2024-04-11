@@ -16,7 +16,6 @@ import {
 import CheckBox from '@react-native-community/checkbox';
 import * as config from '../../android/app/google-services.json';
 import TTS from 'react-native-tts';
-
 import {initializeApp} from 'firebase/app';
 import {get, getDatabase, off, onValue} from 'firebase/database';
 
@@ -47,124 +46,7 @@ const app = initializeApp(firebaseConfig);
 const firestore = getFirestore(app);
 const database = getDatabase(app);
 
-const getBooks = async (documentId: string) => {
-  try {
-    if (!documentId) {
-      console.log('Document ID is undefined');
-      return;
-    }
-
-    const bookRef = doc(firestore, 'books', documentId);
-    const bookSnapshot = await getDoc(bookRef);
-
-    if (bookSnapshot.exists()) {
-      const bookData = bookSnapshot.data();
-      console.log(bookData?.Book_name);
-    } else {
-      console.log('No book found');
-    }
-  } catch (error) {
-    console.error('Error fetching book: ', error);
-  }
-};
-
-const searchBookByName = async (bookName: string) => {
-  try {
-    if (!bookName) {
-      console.log('Book name is undefined');
-      return;
-    }
-
-    // Define the reference to the 'books' collection and create a query
-    const booksRef = collection(firestore, 'books');
-    const q = query(booksRef, where('Book_name', '==', bookName));
-
-    // Execute the query
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      const matchingBooks = querySnapshot.docs.map(doc => {
-        const bookData = doc.data();
-        return {
-          ...bookData,
-          id: doc.id, // Include document ID in the result
-        };
-      });
-
-      // Display book details in a popup
-      matchingBooks.forEach(async bookData => {
-        Alert.alert(
-          'Book Details',
-          `Name: ${bookData.Book_name}\n\nBook Description: ${bookData.Book_description}\n`,
-        );
-        console.log('Book Code is', bookData.Book_QR_code);
-        await set(ref(database, '/test/code'), bookData.Book_QR_code);
-        console.log(
-          'Book Details',
-          `Name: ${bookData.Book_name}, Description: ${bookData.Book_description}`,
-        );
-      });
-    } else {
-      console.log('Book not found');
-      Alert.alert('Book not found');
-    }
-  } catch (error) {
-    console.error('Firestore Query Error:', error);
-    Alert.alert(
-      'Error',
-      'An error occurred while searching for the book by name.',
-    );
-  }
-};
-
-const searchBookByCode = async (bookCode: string) => {
-  try {
-    console.log('Searching for book with code:', bookCode);
-
-    if (!bookCode) {
-      console.log('Book code is undefined');
-      return;
-    }
-
-    // Firestore query to find the book by QR code
-    const booksRef = collection(firestore, 'books');
-    const q = query(
-      booksRef,
-      where('Book_QR_code', '==', parseInt(bookCode, 10)),
-    );
-    const querySnapshot = await getDocs(q);
-
-    if (!querySnapshot.empty) {
-      // Assuming only one book matches the QR code for simplicity
-      const bookData = querySnapshot.docs[0].data();
-
-      // Realtime Database update with the found book's QR code
-      try {
-        const lastSearchedBookCodeRef = ref(database, '/test/code');
-        await set(lastSearchedBookCodeRef, bookData.Book_QR_code);
-        console.log('Updated last searched book code in Realtime Database');
-      } catch (error) {
-        console.error('Error updating Realtime Database:', error);
-      }
-
-      // Log and alert book details
-      console.log(
-        'Book Details',
-        `Name: ${bookData.Book_name}, Description: ${bookData.Book_description}`,
-      );
-      Alert.alert(
-        'Book Details',
-        `Name: ${bookData.Book_name}\nDescription: ${bookData.Book_description}`,
-      );
-    } else {
-      console.log('Book not found');
-      Alert.alert('Book not found');
-    }
-  } catch (error) {
-    console.error('Error searching book by code:', error);
-    Alert.alert('Error occurred while searching for book by code');
-  }
-};
+//TODO: TImeout fix
 
 const Entry = () => {
   const [bookName, setBookName] = useState('');
@@ -173,44 +55,132 @@ const Entry = () => {
   const [isBookCodeChecked, setIsBookCodeChecked] = useState(false);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState('');
-  const [isVoiceEnabled, setIsVoiceEnabled] = useState(false);
   const [isSearching, setIsSearching] = useState(false); // New state to manage search status
+  const searchTimeout = 5 * 1000; // Timeout in milliseconds (e.g., 30000ms is 30 seconds)
+  const [allBooks, setAllBooks] = useState([]);
+  useEffect(() => {
+    const fetchAllBooks = async () => {
+      try {
+        const booksRef = collection(firestore, 'books');
+        const querySnapshot = await getDocs(booksRef);
+        const books = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setAllBooks(books);
+        Alert.alert(
+          'Data Loaded',
+          'Books have been successfully loaded from the database.',
+        );
+      } catch (error) {
+        console.error('Error fetching books from Firestore:', error);
+      }
+    };
 
-  const startListeningForArduinoSuccess = () => {
-    setIsSearching(true); // Indicate search start
+    fetchAllBooks();
+  }, []);
+
+  const normalizeText = text => text.toLowerCase().replace(/\s+/g, '');
+
+  const searchBookByName = async bookName => {
+    const normalizedSearchTerm = normalizeText(bookName);
+    const foundBook = allBooks.find(book =>
+      normalizeText(book.Book_name).includes(normalizedSearchTerm),
+    );
+
+    if (foundBook) {
+      await set(ref(database, '/test/code'), foundBook.Book_QR_code);
+      Alert.alert(
+        'Search Successful',
+        `The book "${foundBook.Book_name}" is available in the database.`,
+      );
+      return foundBook;
+    }
+    Alert.alert('Search Failed', 'No matching book found.');
+    return null;
+  };
+  const searchBookByCode = async bookCode => {
+    const parsedCode = parseInt(bookCode, 10);
+    const foundBook = allBooks.find(book => book.Book_QR_code === parsedCode);
+    if (foundBook) {
+      await set(ref(database, '/test/code'), foundBook.Book_QR_code);
+      return foundBook;
+    }
+    return null;
+  };
+
+  const startListeningForArduinoSuccess = bookDetails => {
+    setIsSearching(true);
     const statusRef = ref(database, '/test/fromArduino/status');
 
-    // Listen for changes in the 'status' node
+    const timeoutId = setTimeout(() => {
+      setIsSearching(false);
+      Alert.alert('Timeout', 'The search for the book has timed out.');
+      set(statusRef, 'idle');
+    }, 5000); // Change this value as needed
+
     const statusListener = onValue(statusRef, async snapshot => {
       const status = snapshot.val();
-      console.log(`Arduino status: ${status}`);
+      clearTimeout(timeoutId);
 
       if (status === 'success') {
-        setIsSearching(false); // Indicate search end
-        Alert.alert('Found!', 'Book is now Found');
-
-        // Fetch additional book details from '/test/fromArduino/contents'
+        setIsSearching(false);
+        TTS.speak('Book Found!');
         const contentsRef = ref(database, '/test/fromArduino/content');
-        await get(contentsRef)
-          .then(contentsSnapshot => {
-            if (contentsSnapshot.exists()) {
-              const contents = contentsSnapshot.val();
-              const bookDetailsMessage = `Book Found! \n\nBook Name: ${contents.name}\nBook Code: ${contents.code}\nBook Section: ${contents.section}\nBook Column: ${contents.column}\nBook Expected Section: ${contents.expectedSection}\n`;
-              Alert.alert('Success', bookDetailsMessage);
-            }
-          })
-          .catch(error => {
-            console.error('Error fetching book details: ', error);
-          });
+        const contentsSnapshot = await get(contentsRef);
 
-        // Optionally, reset the status in Firebase to allow new searches
-        set(statusRef, 'idle'); // Reset the status
+        if (contentsSnapshot.exists()) {
+          const contents = contentsSnapshot.val();
+          const bookDetailsMessage = `Book Found! \n\nBook Name: ${bookDetails.Book_name}\nBook Code: ${bookDetails.Book_QR_code}\nBook Found at Section: ${contents.section}\nBook Column: ${contents.column}\nBook Expected Section: ${bookDetails.Book_section}\n`;
+          Alert.alert('Success', bookDetailsMessage);
+        }
+        set(statusRef, 'idle');
+      } else if (status === 'failed') {
+        setIsSearching(false);
+        Alert.alert(
+          'Book not here',
+          "The robot searched for the book but it wasn't found.",
+        );
+        set(statusRef, 'idle');
       }
     });
 
-    // Return a function to unsubscribe from the listener when no longer needed
-    return () => off(statusRef, 'value', statusListener);
+    return () => {
+      clearTimeout(timeoutId);
+      off(statusRef, 'value', statusListener);
+    };
   };
+
+  const handleSearch = async () => {
+    if (!isBookNameChecked && !isBookCodeChecked) {
+      Alert.alert(
+        'Search Criteria Missing',
+        'Please select a search criterion (by name or by code).',
+      );
+      return;
+    }
+
+    setIsSearching(true);
+    let bookDetails = null;
+
+    if (isBookNameChecked) {
+      bookDetails = await searchBookByName(bookName.trim());
+    } else if (isBookCodeChecked) {
+      bookDetails = await searchBookByCode(bookCode.trim());
+    }
+
+    if (bookDetails) {
+      Alert.alert('Search Successful', 'Please wait while we locate the book.');
+      startListeningForArduinoSuccess(bookDetails);
+    } else {
+      setIsSearching(false);
+      Alert.alert(
+        'Book Not Found',
+        'The book could not be found. Please try again.',
+      );
+    }
+  };
+
   const predefinedQuestions = [
     {
       question: 'Book borrowing rules',
@@ -231,6 +201,7 @@ const Entry = () => {
         Damaged or Lost Materials:
         • If the material is damaged or the delay exceeds 60 days, the material will be considered lost.
         • The borrower will be required to pay the value of the material, the fine for the delay, and a 30 Riyal technical operations fee.`,
+      answerShort: 'Books should be returned within 2 weeks of borrowing',
     },
     {
       question: 'Working hours',
@@ -242,32 +213,14 @@ const Entry = () => {
         Saturday:
         • Opening Time: 4:00 PM
         • Closing Time: 9:00 PM`,
+      answerShort: 'working hours are 8:00 AM to 9:00 PM',
     },
     {
       question: 'Internet password',
       answer: 'Password is 123RMS',
+      answerShort: 'password is 123RMS',
     },
   ];
-
-  const handleSearch = () => {
-    if ((isBookNameChecked || isBookCodeChecked) && !isSearching) {
-      // Activate the listener only when the search is triggered
-      startListeningForArduinoSuccess();
-
-      if (isBookNameChecked) {
-        searchBookByName(bookName);
-      } else if (isBookCodeChecked) {
-        searchBookByCode(bookCode);
-      }
-    } else if (isSearching) {
-      Alert.alert(
-        'Search in progress',
-        'Please wait until the current search is complete.',
-      );
-    } else {
-      Alert.alert('Please select a search criteria');
-    }
-  };
 
   const handleAskQuestion = (question: string) => {
     const selectedQuestion = predefinedQuestions.find(
@@ -275,7 +228,7 @@ const Entry = () => {
     );
     if (selectedQuestion) {
       Alert.alert(selectedQuestion.question, selectedQuestion.answer);
-      TTS.speak(selectedQuestion.answer);
+      TTS.speak(selectedQuestion.answerShort);
     } else {
       Alert.alert('Question not found');
     }
@@ -361,7 +314,7 @@ const Entry = () => {
               onPress={() => handleSearch()}
               disabled={isSearching}>
               {isSearching ? (
-                <ActivityIndicator size="small" color="#0000ff" />
+                <ActivityIndicator size="small" color="#4285F4" />
               ) : (
                 <Text style={styles.text}>Search book</Text>
               )}
